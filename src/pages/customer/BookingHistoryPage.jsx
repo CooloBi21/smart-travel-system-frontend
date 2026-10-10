@@ -4,11 +4,17 @@ import {
   ArrowRight,
   CalendarDays,
   CreditCard,
+  MessageSquare,
   Receipt,
+  Star,
   Users,
 } from 'lucide-react';
 
 import { getMyBookingsApi } from '../../api/bookings.api';
+import {
+  createReviewApi,
+  getMyReviewsApi,
+} from '../../api/reviews.api';
 import './customer-pages.css';
 
 function formatPrice(value) {
@@ -22,10 +28,42 @@ function formatDate(value) {
     return 'Chưa xác định';
   }
 
-  return new Date(value).toLocaleString('vi-VN', {
+  return new Intl.DateTimeFormat('vi-VN', {
     dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  }).format(new Date(value));
+}
+
+const bookingTabs = [
+  {
+    id: 'upcoming',
+    label: 'Upcoming',
+    statuses: ['PENDING', 'CONFIRMED'],
+  },
+  {
+    id: 'completed',
+    label: 'Completed',
+    statuses: ['COMPLETED'],
+  },
+  {
+    id: 'cancelled',
+    label: 'Cancelled',
+    statuses: ['CANCELLED'],
+  },
+];
+
+function getPaymentStatusLabel(status) {
+  switch (status) {
+    case 'PENDING':
+      return 'Chờ thanh toán';
+    case 'SUCCESS':
+      return 'Đã thanh toán';
+    case 'FAILED':
+      return 'Thanh toán thất bại';
+    case 'CANCELLED':
+      return 'Đã hủy thanh toán';
+    default:
+      return status;
+  }
 }
 
 function getStatusLabel(status) {
@@ -60,8 +98,24 @@ function getStatusClass(status) {
 
 export default function BookingHistoryPage() {
   const [bookings, setBookings] = useState([]);
+  const [activeTab, setActiveTab] = useState('upcoming');
+  const [reviewedBookingIds, setReviewedBookingIds] =
+    useState(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reviewBookingId, setReviewBookingId] =
+    useState(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewSuccess, setReviewSuccess] = useState('');
+  const activeBookingTab = bookingTabs.find(
+    (tab) => tab.id === activeTab,
+  );
+  const filteredBookings = bookings.filter((booking) =>
+    activeBookingTab.statuses.includes(booking.status),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +125,11 @@ export default function BookingHistoryPage() {
         setLoading(true);
         setError('');
 
-        const response = await getMyBookingsApi();
+        const [response, reviewsResponse] =
+          await Promise.all([
+            getMyBookingsApi(),
+            getMyReviewsApi(),
+          ]);
 
         if (cancelled) {
           return;
@@ -86,6 +144,18 @@ export default function BookingHistoryPage() {
         setBookings(
           Array.isArray(data) ? data : [],
         );
+
+        const reviewsData = Array.isArray(reviewsResponse)
+          ? reviewsResponse
+          : [];
+
+        const reviewedIds = new Set(
+          reviewsData.map((review) =>
+            Number(review.bookingId),
+          ),
+        );
+
+        setReviewedBookingIds(reviewedIds);
       } catch (requestError) {
         if (cancelled) {
           return;
@@ -109,6 +179,54 @@ export default function BookingHistoryPage() {
     };
   }, []);
 
+  const handleSubmitReview = async (bookingId) => {
+    try {
+      setReviewLoading(true);
+      setReviewError('');
+      setReviewSuccess('');
+
+      const normalizedRating = Number(reviewRating);
+      const normalizedComment = reviewComment.trim();
+
+      if (
+        !Number.isInteger(normalizedRating) ||
+        normalizedRating < 1 ||
+        normalizedRating > 5
+      ) {
+        setReviewError('Đánh giá phải từ 1 đến 5 sao.');
+        return;
+      }
+
+      if (!normalizedComment) {
+        setReviewError('Vui lòng nhập nội dung đánh giá.');
+        return;
+      }
+
+      await createReviewApi({
+        bookingId: Number(bookingId),
+        rating: normalizedRating,
+        comment: normalizedComment,
+      });
+
+      setReviewedBookingIds((previousIds) =>
+        new Set(previousIds).add(Number(bookingId)),
+      );
+      setReviewSuccess(
+        'Đánh giá đã được gửi thành công.',
+      );
+      setReviewComment('');
+      setReviewRating(5);
+      setReviewBookingId(null);
+    } catch (requestError) {
+      setReviewError(
+        requestError.response?.data?.message ||
+          'Không thể gửi đánh giá.',
+      );
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
   return (
     <main className="page-container booking-history-page">
       <div className="page-header">
@@ -124,6 +242,14 @@ export default function BookingHistoryPage() {
             System.
           </p>
         </div>
+
+        <Link
+          to="/my-reviews"
+          className="secondary-button"
+        >
+          <MessageSquare size={16} />
+          Đánh giá của tôi
+        </Link>
       </div>
 
       {loading && (
@@ -139,32 +265,62 @@ export default function BookingHistoryPage() {
         </div>
       )}
 
-      {!loading &&
-        !error &&
-        bookings.length === 0 && (
-          <div className="empty-state">
-            <Receipt size={42} />
+      {!loading && !error && (
+        <>
+          <div className="booking-tabs" role="tablist" aria-label="Lọc booking">
+            {bookingTabs.map((tab) => {
+              const count = bookings.filter((booking) =>
+                tab.statuses.includes(booking.status),
+              ).length;
 
-            <h2>Chưa có booking</h2>
-
-            <p>
-              Bạn chưa thực hiện đặt tour nào.
-            </p>
-
-            <Link
-              to="/explore"
-              className="primary-button"
-            >
-              Khám phá tour
-            </Link>
+              return (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
+                  className={`booking-tab ${
+                    activeTab === tab.id ? 'active' : ''
+                  }`}
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                  <span>{count}</span>
+                </button>
+              );
+            })}
           </div>
-        )}
 
-      {!loading &&
-        !error &&
-        bookings.length > 0 && (
-          <div className="booking-list">
-            {bookings.map((booking) => (
+          {bookings.length === 0 ? (
+            <div className="empty-state">
+              <Receipt size={42} />
+
+              <h2>Chưa có booking</h2>
+
+              <p>Bạn chưa thực hiện đặt tour nào.</p>
+
+              <Link
+                to="/explore"
+                className="primary-button"
+              >
+                Khám phá tour
+              </Link>
+            </div>
+          ) : filteredBookings.length === 0 ? (
+            <div className="empty-state">
+              <Receipt size={42} />
+              <h2>Không có booking {activeBookingTab.label}</h2>
+              <p>Booking thuộc trạng thái này sẽ hiển thị tại đây.</p>
+            </div>
+          ) : (
+            <div className="booking-list">
+            {reviewSuccess && (
+              <p className="state-message">
+                {reviewSuccess}
+              </p>
+            )}
+
+            {filteredBookings.map((booking) => (
               <article
                 className="booking-card"
                 key={booking.id}
@@ -176,8 +332,8 @@ export default function BookingHistoryPage() {
                     </span>
 
                     <h2>
-                      Tour departure #
-                      {booking.tourDepartureId}
+                      {booking.tourTitle ||
+                        'Tên tour chưa có trong dữ liệu booking'}
                     </h2>
                   </div>
 
@@ -194,6 +350,17 @@ export default function BookingHistoryPage() {
 
                 <div className="booking-info-grid">
                   <div>
+                    <CalendarDays size={18} />
+
+                    <span>
+                      Ngày khởi hành:{' '}
+                      {booking.departureDate
+                        ? formatDate(booking.departureDate)
+                        : 'Chưa có trong dữ liệu booking'}
+                    </span>
+                  </div>
+
+                  <div>
                     <Users size={18} />
 
                     <span>
@@ -205,21 +372,20 @@ export default function BookingHistoryPage() {
                     <CreditCard size={18} />
 
                     <span>
-                      {formatPrice(
-                        booking.totalAmount,
-                      )}
+                      Tổng tiền: {formatPrice(booking.totalAmount)}
                     </span>
                   </div>
 
-                  <div>
-                    <CalendarDays size={18} />
-
-                    <span>
-                      {formatDate(
-                        booking.createdAt,
-                      )}
-                    </span>
-                  </div>
+                  {typeof booking.paymentStatus === 'string' &&
+                    booking.paymentStatus && (
+                      <div>
+                        <CreditCard size={18} />
+                        <span>
+                          Thanh toán:{' '}
+                          {getPaymentStatusLabel(booking.paymentStatus)}
+                        </span>
+                      </div>
+                    )}
                 </div>
 
                 <div className="booking-card-footer">
@@ -233,6 +399,26 @@ export default function BookingHistoryPage() {
                   </span>
 
                   <div className="booking-actions">
+                    {booking.status === 'COMPLETED' &&
+                      !reviewedBookingIds.has(
+                        Number(booking.id),
+                      ) && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setReviewBookingId(booking.id);
+                          setReviewError('');
+                          setReviewSuccess('');
+                          setReviewRating(5);
+                          setReviewComment('');
+                        }}
+                      >
+                        <Star size={16} />
+                        Đánh giá
+                      </button>
+                    )}
+
                     {booking.status ===
                       'PENDING' && (
                       <Link
@@ -252,10 +438,90 @@ export default function BookingHistoryPage() {
                     </Link>
                   </div>
                 </div>
+
+                {reviewBookingId === booking.id && (
+                  <div className="review-form">
+                    <h3>Đánh giá tour</h3>
+
+                    <div className="review-rating">
+                      <label htmlFor={`rating-${booking.id}`}>
+                        Số sao
+                      </label>
+
+                      <select
+                        id={`rating-${booking.id}`}
+                        value={reviewRating}
+                        onChange={(event) =>
+                          setReviewRating(Number(event.target.value))
+                        }
+                        disabled={reviewLoading}
+                      >
+                        <option value={5}>5 sao</option>
+                        <option value={4}>4 sao</option>
+                        <option value={3}>3 sao</option>
+                        <option value={2}>2 sao</option>
+                        <option value={1}>1 sao</option>
+                      </select>
+                    </div>
+
+                    <div className="review-comment">
+                      <label htmlFor={`comment-${booking.id}`}>
+                        Nội dung đánh giá
+                      </label>
+
+                      <textarea
+                        id={`comment-${booking.id}`}
+                        value={reviewComment}
+                        onChange={(event) =>
+                          setReviewComment(event.target.value)
+                        }
+                        placeholder="Chia sẻ trải nghiệm của bạn..."
+                        maxLength={5000}
+                        rows={4}
+                        disabled={reviewLoading}
+                      />
+                    </div>
+
+                    {reviewError && (
+                      <p className="error-state">
+                        {reviewError}
+                      </p>
+                    )}
+
+                    <div className="booking-actions">
+                      <button
+                        type="button"
+                        className="primary-button"
+                        onClick={() =>
+                          handleSubmitReview(booking.id)
+                        }
+                        disabled={reviewLoading}
+                      >
+                        {reviewLoading
+                          ? 'Đang gửi...'
+                          : 'Gửi đánh giá'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setReviewBookingId(null);
+                          setReviewError('');
+                        }}
+                        disabled={reviewLoading}
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  </div>
+                )}
               </article>
             ))}
-          </div>
-        )}
+            </div>
+          )}
+        </>
+      )}
     </main>
   );
 }

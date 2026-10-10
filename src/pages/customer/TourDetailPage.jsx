@@ -44,6 +44,7 @@ export default function TourDetailPage() {
   const [selectedDepartureId, setSelectedDepartureId] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +52,10 @@ export default function TourDetailPage() {
     const loadTour = async () => {
       setLoading(true);
       setError('');
+      setNotFound(false);
+      setTour(null);
+      setDepartures([]);
+      setSelectedDepartureId('');
 
       try {
         const [
@@ -98,6 +103,7 @@ export default function TourDetailPage() {
           requestError.response?.data?.message ||
             'Không thể tải thông tin tour.',
         );
+        setNotFound(requestError.response?.status === 404);
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -136,7 +142,7 @@ export default function TourDetailPage() {
     return (
       <main className="page-container">
         <div className="error-state">
-          <h1>Không thể tải tour</h1>
+          <h1>{notFound ? 'Không tìm thấy tour' : 'Không thể tải tour'}</h1>
           <p>{error}</p>
 
           <Link to="/explore">
@@ -247,6 +253,7 @@ export default function TourDetailPage() {
                 <button
                   key={departure.id}
                   type="button"
+                  aria-pressed={isSelected}
                   className={`departure-card ${
                     isSelected
                       ? 'selected'
@@ -272,11 +279,10 @@ export default function TourDetailPage() {
                     <Users size={20} />
 
                     <span>
-                      Còn{' '}
-                      {departure.availableSlots ??
-                        departure.capacity ??
-                        0}{' '}
-                      chỗ
+                      {departure.availableSlots !== null &&
+                      departure.availableSlots !== undefined
+                        ? `Còn ${departure.availableSlots} chỗ`
+                        : 'Số chỗ còn lại chưa được cung cấp'}
                     </span>
                   </div>
 

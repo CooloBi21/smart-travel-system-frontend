@@ -27,6 +27,7 @@ function getTourFromRecommendation(item) {
 
 function getRecommendationScore(item) {
   return (
+    item?.breakdown?.finalScore ??
     item?.finalScore ??
     item?.score ??
     item?.recommendationScore ??

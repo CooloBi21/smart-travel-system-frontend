@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   CheckCircle2,
   CreditCard,
+  Landmark,
   LoaderCircle,
+  QrCode,
 } from 'lucide-react';
 import { getBookingApi } from '../../api/bookings.api';
 import {
@@ -21,7 +23,7 @@ function formatPrice(value) {
 
 function formatDate(value) {
   if (!value) {
-    return 'Chưa xác định';
+    return null;
   }
 
   return new Intl.DateTimeFormat('vi-VN', {
@@ -40,16 +42,51 @@ function formatBookingStatus(status) {
   return statusMap[status] || status || 'Chưa xác định';
 }
 
+function formatPaymentStatus(status) {
+  const statusMap = {
+    PENDING: 'Đang chờ thanh toán',
+    SUCCESS: 'Đã thanh toán',
+    FAILED: 'Thất bại',
+    CANCELLED: 'Đã hủy',
+  };
+
+  return statusMap[status] || status || 'Chưa có dữ liệu thanh toán';
+}
+
+const paymentMethods = [
+  {
+    id: 'vnpay',
+    label: 'VNPay Demo',
+    description: 'Mô phỏng thanh toán qua VNPay.',
+    Icon: CreditCard,
+  },
+  {
+    id: 'qr',
+    label: 'QR Demo',
+    description: 'Mô phỏng thanh toán bằng mã QR.',
+    Icon: QrCode,
+  },
+  {
+    id: 'bank-transfer',
+    label: 'Bank Transfer Simulation',
+    description: 'Mô phỏng chuyển khoản ngân hàng.',
+    Icon: Landmark,
+  },
+];
+
 export default function PaymentPage() {
   const { bookingId } = useParams();
+  const location = useLocation();
+  const paymentContext = location.state || {};
 
   const [booking, setBooking] = useState(null);
   const [payment, setPayment] = useState(null);
+  const [selectedMethod, setSelectedMethod] = useState('vnpay');
 
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const success = payment?.status === 'SUCCESS';
 
   useEffect(() => {
     let cancelled = false;
@@ -67,12 +104,8 @@ export default function PaymentPage() {
 
         const bookingData =
           response?.booking || response;
-
         setBooking(bookingData);
 
-        if (bookingData?.status === 'CONFIRMED') {
-          setSuccess(true);
-        }
       } catch (requestError) {
         if (cancelled) {
           return;
@@ -104,7 +137,6 @@ export default function PaymentPage() {
     try {
       setProcessing(true);
       setError('');
-      setSuccess(false);
 
       const paymentResponse = await createPaymentApi({
         bookingId: Number(booking.id),
@@ -142,12 +174,9 @@ export default function PaymentPage() {
       const refreshedBooking =
         refreshedBookingResponse?.booking ||
         refreshedBookingResponse;
-
+      setBooking(refreshedBooking);
       setBooking(refreshedBooking);
 
-      setSuccess(
-        refreshedBooking?.status === 'CONFIRMED',
-      );
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
@@ -194,6 +223,24 @@ export default function PaymentPage() {
     );
   }
 
+  const unavailableValue = 'Chưa có trong dữ liệu booking';
+  const tourName = paymentContext.tourTitle || unavailableValue;
+  const companyName = paymentContext.companyName || unavailableValue;
+  const departureDate =
+    formatDate(paymentContext.departureDate) || unavailableValue;
+  const bookingDetails = [
+    { label: 'Tour', value: tourName },
+    { label: 'Công ty', value: companyName },
+    { label: 'Ngày khởi hành', value: departureDate },
+    { label: 'Số khách', value: booking.guestCount },
+    { label: 'Tổng tiền', value: formatPrice(booking.totalAmount) },
+    { label: 'Tiền đặt cọc', value: 'API chưa hỗ trợ' },
+  ];
+  const paymentSucceeded = payment?.status === 'SUCCESS';
+  const amountPaid = payment
+    ? formatPrice(paymentSucceeded ? payment.amount : 0)
+    : 'Chưa có dữ liệu thanh toán';
+
   return (
     <main className="page-container payment-page">
       <Link
@@ -219,17 +266,72 @@ export default function PaymentPage() {
                 Booking của bạn đã được xác nhận.
               </p>
 
+              <div className="payment-success-details">
+                <div className="payment-success-status">
+                  <span>Mã booking</span>
+                  <strong>#{booking.id}</strong>
+                </div>
+
+                {bookingDetails
+                  .filter(({ label }) => label !== 'Tiền đặt cọc')
+                  .map(({ label, value }) => (
+                    <div
+                      className="payment-success-status"
+                      key={label}
+                    >
+                      <span>{label}</span>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+
+                <div className="payment-success-status">
+                  <span>Số tiền đã trả</span>
+                  <strong>{amountPaid}</strong>
+                </div>
+
+                <div className="payment-success-status">
+                  <span>Trạng thái booking</span>
+                  <strong>
+                    {formatBookingStatus(booking.status)}
+                  </strong>
+                </div>
+
+                <div className="payment-success-status">
+                  <span>Trạng thái thanh toán</span>
+                  <strong>
+                    {payment
+                      ? formatPaymentStatus(payment.status)
+                      : 'Chưa có dữ liệu thanh toán'}
+                  </strong>
+                </div>
+              </div>
+
+              <Link
+                to="/my-bookings"
+                className="primary-button"
+              >
+                View Booking
+              </Link>
+            </div>
+          ) : booking.status === 'CONFIRMED' ? (
+            <div className="payment-unverified">
+              <h1>Booking đã được xác nhận</h1>
+              <p>
+                Chưa có dữ liệu payment để xác minh việc thanh toán.
+              </p>
               <div className="payment-success-status">
-                <span>Booking</span>
-                <strong>#{booking.id}</strong>
+                <span>Trạng thái booking</span>
+                <strong>
+                  {formatBookingStatus(booking.status)}
+                </strong>
               </div>
 
               <div className="payment-success-status">
-                <span>Trạng thái</span>
+                <span>Trạng thái thanh toán</span>
                 <strong>
-                  {formatBookingStatus(
-                    booking.status,
-                  )}
+                  {payment
+                    ? formatPaymentStatus(payment.status)
+                    : 'Chưa có dữ liệu thanh toán'}
                 </strong>
               </div>
 
@@ -237,7 +339,7 @@ export default function PaymentPage() {
                 to="/my-bookings"
                 className="primary-button"
               >
-                Xem booking của tôi
+                View Booking
               </Link>
             </div>
           ) : (
@@ -261,21 +363,40 @@ export default function PaymentPage() {
                 </div>
               )}
 
-              <div className="payment-method-card">
-                <div className="payment-method-icon">
-                  <CreditCard size={24} />
+              <div className="payment-method-section">
+                <h2>Phương thức thanh toán</h2>
+
+                <div className="payment-method-options">
+                  {paymentMethods.map(({ id, label, description, Icon }) => (
+                    <label
+                      className={`payment-method-option ${
+                        selectedMethod === id ? 'selected' : ''
+                      }`}
+                      key={id}
+                    >
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value={id}
+                        checked={selectedMethod === id}
+                        onChange={() => setSelectedMethod(id)}
+                        disabled={processing}
+                      />
+                      <span className="payment-method-icon">
+                        <Icon size={22} />
+                      </span>
+                      <span className="payment-method-copy">
+                        <strong>{label}</strong>
+                        <span>{description}</span>
+                      </span>
+                    </label>
+                  ))}
                 </div>
 
-                <div>
-                  <strong>
-                    Thanh toán mô phỏng
-                  </strong>
-
-                  <p>
-                    Đây là phương thức thanh toán mô
-                    phỏng phục vụ prototype tốt nghiệp.
-                  </p>
-                </div>
+                <p className="payment-demo-note">
+                  Các lựa chọn chỉ minh họa giao diện. Backend hiện xử lý mọi
+                  lựa chọn bằng phương thức thanh toán mô phỏng.
+                </p>
               </div>
 
               <button
@@ -290,10 +411,10 @@ export default function PaymentPage() {
                       size={18}
                       className="spin"
                     />
-                    Đang xử lý thanh toán...
+                    Processing...
                   </>
                 ) : (
-                  'Xác nhận thanh toán'
+                  `Pay Now — ${formatPrice(booking.totalAmount)}`
                 )}
               </button>
             </>
@@ -301,47 +422,34 @@ export default function PaymentPage() {
         </section>
 
         <aside className="payment-summary">
-          <h2>Thông tin booking</h2>
+          <h2>{success ? 'Booking Summary' : 'Summary'}</h2>
 
           <div className="summary-row">
             <span>Mã booking</span>
             <strong>#{booking.id}</strong>
           </div>
 
-          <div className="summary-row">
-            <span>Số khách</span>
-            <strong>{booking.guestCount}</strong>
-          </div>
+          {bookingDetails.map(({ label, value }) => (
+            <div
+              className={`summary-row ${
+                label === 'Tổng tiền' ? 'total' : ''
+              }`}
+              key={label}
+            >
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
 
           <div className="summary-row">
-            <span>Giá / người</span>
-            <strong>
-              {formatPrice(booking.unitPrice)}
-            </strong>
+            <span>Trạng thái booking</span>
+            <strong>{formatBookingStatus(booking.status)}</strong>
           </div>
 
-          <div className="summary-row total">
-            <span>Tổng tiền</span>
-            <strong>
-              {formatPrice(booking.totalAmount)}
-            </strong>
-          </div>
-
-          <div className="summary-row">
-            <span>Trạng thái</span>
-            <strong>
-              {formatBookingStatus(
-                booking.status,
-              )}
-            </strong>
-          </div>
-
-          {booking.createdAt && (
-            <div className="summary-row">
-              <span>Ngày tạo</span>
-              <strong>
-                {formatDate(booking.createdAt)}
-              </strong>
+          {payment && (
+            <div className="summary-payment">
+              <span>Trạng thái thanh toán</span>
+              <strong>{formatPaymentStatus(payment.status)}</strong>
             </div>
           )}
 

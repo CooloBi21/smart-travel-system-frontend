@@ -13,11 +13,14 @@ import TourDetailPage from '../pages/customer/TourDetailPage';
 import BookingPage from '../pages/customer/BookingPage';
 import PaymentPage from '../pages/customer/PaymentPage';
 import BookingHistoryPage from '../pages/customer/BookingHistoryPage';
+import ReviewsPage from '../pages/customer/ReviewsPage';
 import RecommendationPage from '../pages/customer/RecommendationPage';
+import AccountPage from '../pages/customer/AccountPage';
 
 import CompanyDashboardPage from '../pages/company/DashboardPage';
 import ToursPage from '../pages/company/ToursPage';
 import TourFormPage from '../pages/company/TourFormPage';
+import DeparturesPage from '../pages/company/DeparturesPage';
 import BookingsPage from '../pages/company/BookingsPage';
 import CompanyProfilePage from '../pages/company/CompanyProfilePage';
 
@@ -43,12 +46,14 @@ export default function AppRoutes() {
         />
 
         <Route element={<ProtectedRoute allowedRoles={['CUSTOMER']} />}>
+          <Route path="/account" element={<AccountPage />} />
           <Route
             path="/tours/:companySlug/:tourSlug/booking"
             element={<BookingPage />}
           />
           <Route path="/payment/:bookingId" element={<PaymentPage />} />
           <Route path="/my-bookings" element={<BookingHistoryPage />} />
+          <Route path="/my-reviews" element={<ReviewsPage />} />
           <Route path="/recommendations" element={<RecommendationPage />} />
         </Route>
       </Route>
@@ -60,6 +65,10 @@ export default function AppRoutes() {
           <Route path="tours" element={<ToursPage />} />
           <Route path="tours/new" element={<TourFormPage />} />
           <Route path="tours/:tourId/edit" element={<TourFormPage />} />
+          <Route
+            path="tours/:tourId/departures"
+            element={<DeparturesPage />}
+          />
           <Route path="bookings" element={<BookingsPage />} />
           <Route path="profile" element={<CompanyProfilePage />} />
         </Route>

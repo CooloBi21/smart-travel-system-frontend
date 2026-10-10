@@ -17,6 +17,10 @@ import {
   getMyTourApi,
   updateMyTourApi,
 } from '../../api/tours.api';
+import {
+  getCategoriesApi,
+  getDestinationsApi,
+} from '../../api/reference-data.api';
 
 import './company-pages.css';
 
@@ -73,14 +77,63 @@ export default function TourFormPage() {
   const isEditMode = Boolean(tourId);
 
   const [form, setForm] = useState(INITIAL_FORM);
+
+  const [destinations, setDestinations] = useState([]);
+  const [categories, setCategories] = useState([]);
+
   const [loading, setLoading] = useState(isEditMode);
+  const [referenceLoading, setReferenceLoading] =
+    useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const pageTitle = useMemo(
-    () => (isEditMode ? 'Chỉnh sửa tour' : 'Tạo tour mới'),
+    () =>
+      isEditMode
+        ? 'Chỉnh sửa tour'
+        : 'Tạo tour mới',
     [isEditMode],
   );
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
+      try {
+        setReferenceLoading(true);
+        setError('');
+
+        const [
+          destinationsResponse,
+          categoriesResponse,
+        ] = await Promise.all([
+          getDestinationsApi(),
+          getCategoriesApi(),
+        ]);
+
+        setDestinations(
+          Array.isArray(destinationsResponse)
+            ? destinationsResponse
+            : [],
+        );
+
+        setCategories(
+          Array.isArray(categoriesResponse)
+            ? categoriesResponse
+            : [],
+        );
+      } catch (requestError) {
+        console.error(requestError);
+
+        setError(
+          requestError?.response?.data?.message ||
+            'Không thể tải danh sách điểm đến và danh mục.',
+        );
+      } finally {
+        setReferenceLoading(false);
+      }
+    };
+
+    loadReferenceData();
+  }, []);
 
   useEffect(() => {
     if (!isEditMode) {
@@ -164,7 +217,8 @@ export default function TourFormPage() {
         categoryId: Number(form.categoryId),
         title: form.title.trim(),
         slug: form.slug.trim(),
-        description: form.description.trim() || null,
+        description:
+          form.description.trim() || null,
         durationDays: Number(form.durationDays),
         travelStyle: form.travelStyle,
         cancellationPolicy:
@@ -176,7 +230,7 @@ export default function TourFormPage() {
         !payload.categoryId
       ) {
         setError(
-          'Destination ID và Category ID phải được nhập.',
+          'Vui lòng chọn điểm đến và danh mục.',
         );
         return;
       }
@@ -222,14 +276,16 @@ export default function TourFormPage() {
     }
   };
 
-  if (loading) {
+  if (loading || referenceLoading) {
     return (
       <PageContainer>
         <section className="section company-page-section">
           <div className="company-tour-form-loading">
             <FileText size={28} />
             <strong>
-              Đang tải thông tin tour...
+              {loading
+                ? 'Đang tải thông tin tour...'
+                : 'Đang tải dữ liệu tour...'}
             </strong>
           </div>
         </section>
@@ -350,45 +406,63 @@ export default function TourFormPage() {
 
               <div className="company-form-field">
                 <label htmlFor="destinationId">
-                  Destination ID
+                  Điểm đến
                 </label>
 
-                <input
+                <select
                   id="destinationId"
                   name="destinationId"
-                  type="number"
-                  min="1"
-                  step="1"
                   value={form.destinationId}
                   onChange={handleChange}
-                  placeholder="Ví dụ: 5"
                   required
-                />
+                >
+                  <option value="">
+                    -- Chọn điểm đến --
+                  </option>
+
+                  {destinations.map((destination) => (
+                    <option
+                      key={destination.id}
+                      value={destination.id}
+                    >
+                      {destination.name}
+                    </option>
+                  ))}
+                </select>
 
                 <small>
-                  ID destination ACTIVE trong hệ thống.
+                  Chỉ hiển thị điểm đến đang hoạt động.
                 </small>
               </div>
 
               <div className="company-form-field">
                 <label htmlFor="categoryId">
-                  Category ID
+                  Danh mục
                 </label>
 
-                <input
+                <select
                   id="categoryId"
                   name="categoryId"
-                  type="number"
-                  min="1"
-                  step="1"
                   value={form.categoryId}
                   onChange={handleChange}
-                  placeholder="Ví dụ: 1"
                   required
-                />
+                >
+                  <option value="">
+                    -- Chọn danh mục --
+                  </option>
+
+                  {categories.map((category) => (
+                    <option
+                      key={category.id}
+                      value={category.id}
+                    >
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
 
                 <small>
-                  ID category đang hoạt động.
+                  Chỉ hiển thị danh mục đang hoạt động.
                 </small>
               </div>
 

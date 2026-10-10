@@ -284,3 +284,193 @@
     font-size: 12px;
     font-weight: 700;
 }
+
+.navbar-account {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+}
+
+.navbar-account-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    max-width: 260px;
+    padding: 5px 9px 5px 5px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease,
+        border-color 0.2s ease;
+}
+
+.navbar-account-trigger:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+
+.navbar-account-trigger:focus-visible,
+.navbar-account-menu > a:focus-visible,
+.navbar-account-menu > button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+}
+
+.navbar-account-avatar {
+    display: inline-flex;
+    flex: 0 0 36px;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.navbar-account-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.navbar-account-name {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.navbar-account-chevron {
+    flex-shrink: 0;
+    color: var(--muted);
+    transition: transform 0.2s ease;
+}
+
+.navbar-account-chevron.is-open {
+    transform: rotate(180deg);
+}
+
+.navbar-account-menu {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    z-index: 1100;
+    width: 280px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-md);
+    animation: navbar-account-appear 0.15s ease-out;
+}
+
+.navbar-account-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 10px;
+}
+
+.navbar-account-avatar-large {
+    flex-basis: 44px;
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+}
+
+.navbar-account-identity {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.navbar-account-identity strong {
+    overflow: hidden;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.navbar-account-identity > span {
+    overflow-wrap: anywhere;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.navbar-account-divider {
+    height: 1px;
+    margin: 5px 4px 8px;
+    background: var(--border);
+}
+
+.navbar-account-menu > a,
+.navbar-account-menu > button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 10px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 14px;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.navbar-account-menu > a:hover,
+.navbar-account-menu > button:hover {
+    background: var(--background);
+}
+
+@keyframes navbar-account-appear {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 640px) {
+    .navbar-account-name {
+        display: none;
+    }
+
+    .navbar-account-trigger {
+        gap: 5px;
+        padding-right: 7px;
+    }
+
+    .navbar-account-menu {
+        right: -6px;
+        width: min(280px, calc(100vw - 24px));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .navbar-account-trigger,
+    .navbar-account-chevron {
+        transition: none;
+    }
+
+    .navbar-account-menu {
+        animation: none;
+    }
+}

@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   CalendarCheck,
   CheckCircle2,
   Clock3,
   Eye,
+  LoaderCircle,
+  RotateCcw,
   Search,
   XCircle,
 } from 'lucide-react';
@@ -12,6 +18,7 @@ import PageContainer from '../../components/layout/PageContainer';
 import {
   getCompanyBookingApi,
   getCompanyBookingsApi,
+  updateCompanyBookingStatusApi,
 } from '../../api/bookings.api';
 
 import './company-pages.css';
@@ -32,10 +39,10 @@ const STATUS_CONFIG = {
     className: 'cancelled',
     icon: XCircle,
   },
-  FAILED: {
-    label: 'Thất bại',
-    className: 'failed',
-    icon: XCircle,
+  COMPLETED: {
+    label: 'Đã hoàn thành',
+    className: 'confirmed',
+    icon: CheckCircle2,
   },
 };
 
@@ -99,13 +106,19 @@ export default function BookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionSuccess, setActionSuccess] = useState('');
+  const [actionError, setActionError] = useState('');
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [detailBookingId, setDetailBookingId] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -127,8 +140,6 @@ export default function BookingsPage() {
           return;
         }
 
-        console.error(requestError);
-
         setError(
           requestError?.response?.data?.message ||
             'Không thể tải danh sách booking.',
@@ -145,7 +156,7 @@ export default function BookingsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const statistics = useMemo(() => {
     return {
@@ -156,8 +167,8 @@ export default function BookingsPage() {
       pending: bookings.filter(
         (booking) => booking.status === 'PENDING',
       ).length,
-      failed: bookings.filter(
-        (booking) => booking.status === 'FAILED',
+      completed: bookings.filter(
+        (booking) => booking.status === 'COMPLETED',
       ).length,
       cancelled: bookings.filter(
         (booking) => booking.status === 'CANCELLED',
@@ -179,8 +190,15 @@ export default function BookingsPage() {
 
       const searchableText = [
         booking.id,
-        booking.guestId,
+        booking.userId,
+        booking.tourDepartureId,
         booking.tourId,
+        booking.tourTitle,
+        booking.departureDate,
+        booking.contactName,
+        booking.contactEmail,
+        booking.contactPhone,
+        booking.guestCount,
         booking.status,
       ]
         .filter(
@@ -198,39 +216,98 @@ export default function BookingsPage() {
     });
   }, [bookings, search, statusFilter]);
 
-  const handleViewBooking = async (bookingId) => {
+  useEffect(() => {
+    if (detailBookingId === null) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadBookingDetail = async () => {
+      try {
+        setDetailLoading(true);
+        setDetailError('');
+
+        const response = await getCompanyBookingApi(detailBookingId);
+
+        if (!cancelled) {
+          setSelectedBooking(response?.booking || response);
+        }
+      } catch (requestError) {
+        if (!cancelled) {
+          setDetailError(
+            requestError?.response?.data?.message ||
+              'Không thể tải thông tin booking.',
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setDetailLoading(false);
+        }
+      }
+    };
+
+    loadBookingDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailBookingId, detailReloadKey]);
+
+  const handleViewBooking = (bookingId) => {
+    setSelectedBooking(null);
+    setDetailBookingId(bookingId);
+    setDetailLoading(true);
+    setDetailError('');
+    setActionError('');
+    setActionSuccess('');
+  };
+
+  const handleUpdateBookingStatus = async (bookingId, status) => {
+    let statusUpdated = false;
+
     try {
-      setDetailLoading(true);
-      setDetailError('');
-      setSelectedBooking(null);
+      setActionLoading(true);
+      setActionError('');
+      setActionSuccess('');
 
-      const response = await getCompanyBookingApi(
-        bookingId,
-      );
+      await updateCompanyBookingStatusApi(bookingId, status);
+      statusUpdated = true;
 
+      const [updatedBookings, updatedBookingResponse] =
+        await Promise.all([
+          getCompanyBookingsApi(),
+          getCompanyBookingApi(bookingId),
+        ]);
+
+      setBookings(normalizeBookings(updatedBookings));
       setSelectedBooking(
-        response?.booking || response,
+        updatedBookingResponse?.booking || updatedBookingResponse,
       );
-    } catch (requestError) {
-      console.error(requestError);
-
-      setDetailError(
-        requestError?.response?.data?.message ||
-          'Không thể tải thông tin booking.',
+      setActionSuccess('Trạng thái booking đã được cập nhật.');
+    } catch (err) {
+      setActionError(
+        statusUpdated
+          ? 'Trạng thái đã được cập nhật nhưng không thể tải lại dữ liệu booking.'
+          : err?.response?.data?.message ||
+              'Không thể cập nhật trạng thái booking.',
       );
     } finally {
-      setDetailLoading(false);
+      setActionLoading(false);
     }
   };
 
   const closeDetail = () => {
     setSelectedBooking(null);
+    setDetailBookingId(null);
     setDetailError('');
+    setActionError('');
+    setActionSuccess('');
   };
 
   return (
     <PageContainer>
-      <section className="section company-page-section">
+      <section className="section company-page-section company-bookings-page">
         <div className="company-page-header">
           <div>
             <span className="section-eyebrow">
@@ -282,22 +359,49 @@ export default function BookingsPage() {
 
           <div className="company-tour-stat-card">
             <div className="company-tour-stat-icon">
+              <CheckCircle2 size={20} />
+            </div>
+
+            <div>
+              <span>Đã hoàn thành</span>
+              <strong>{statistics.completed}</strong>
+            </div>
+          </div>
+
+          <div className="company-tour-stat-card">
+            <div className="company-tour-stat-icon">
               <XCircle size={20} />
             </div>
 
             <div>
-              <span>Thất bại / Hủy</span>
-              <strong>
-                {statistics.failed +
-                  statistics.cancelled}
-              </strong>
+              <span>Đã hủy</span>
+              <strong>{statistics.cancelled}</strong>
             </div>
           </div>
         </div>
 
         {error && (
-          <div className="company-page-alert error">
+          <div className="company-page-alert error company-booking-feedback">
             {error}
+            {!loading && (
+              <button
+                type="button"
+                className="company-secondary-button"
+                onClick={() => setReloadKey((key) => key + 1)}
+              >
+                <RotateCcw size={15} />
+                Thử tải lại
+              </button>
+            )}
+          </div>
+        )}
+
+        {actionSuccess && (
+          <div
+            className="company-booking-feedback success"
+            role="status"
+          >
+            {actionSuccess}
           </div>
         )}
 
@@ -311,7 +415,7 @@ export default function BookingsPage() {
               onChange={(event) =>
                 setSearch(event.target.value)
               }
-              placeholder="Tìm theo booking, guest hoặc tour..."
+              placeholder="Tìm mã booking, khách, tour, ngày khởi hành..."
             />
           </label>
 
@@ -336,26 +440,34 @@ export default function BookingsPage() {
                 Đã xác nhận
               </option>
 
-              <option value="CANCELLED">
-                Đã hủy
+              <option value="COMPLETED">
+                Đã hoàn thành
               </option>
 
-              <option value="FAILED">
-                Thất bại
+              <option value="CANCELLED">
+                Đã hủy
               </option>
             </select>
           </label>
         </div>
 
+        {loading && (
+          <div className="company-booking-loading" role="status">
+            <LoaderCircle size={19} className="company-booking-spinner" />
+            Đang tải danh sách booking...
+          </div>
+        )}
+
+        {!loading && !error && (
         <div className="company-tour-table-card">
           <div className="company-tour-table-wrapper">
             <table className="company-tour-table">
               <thead>
                 <tr>
                   <th>Booking</th>
-                  <th>Guest</th>
+                  <th>Khách hàng</th>
                   <th>Tour</th>
-                  <th>Số lượng</th>
+                  <th>Số khách</th>
                   <th>Tổng tiền</th>
                   <th>Trạng thái</th>
                   <th>Ngày tạo</th>
@@ -364,22 +476,15 @@ export default function BookingsPage() {
               </thead>
 
               <tbody>
-                {loading ? (
+                {filteredBookings.length === 0 ? (
                   <tr>
                     <td
                       colSpan="8"
                       className="company-tour-empty"
                     >
-                      Đang tải booking...
-                    </td>
-                  </tr>
-                ) : filteredBookings.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan="8"
-                      className="company-tour-empty"
-                    >
-                      Không tìm thấy booking phù hợp.
+                      {bookings.length === 0
+                        ? 'Chưa có booking nào.'
+                        : 'Không có booking phù hợp với tìm kiếm và bộ lọc.'}
                     </td>
                   </tr>
                 ) : (
@@ -400,21 +505,43 @@ export default function BookingsPage() {
                         </td>
 
                         <td>
-                          Guest #{booking.guestId ?? '—'}
+                          <div>
+                            <strong>{booking.contactName || '—'}</strong>
+                            {booking.contactEmail && (
+                              <div className="company-booking-secondary-text">
+                                {booking.contactEmail}
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         <td>
-                          Tour #{booking.tourId ?? '—'}
+                          <div>
+                            <strong>{booking.tourTitle || '—'}</strong>
+
+                            <div className="company-booking-secondary-text">
+                              Departure #{booking.tourDepartureId ?? '—'}
+                            </div>
+
+                            {booking.departureDate && (
+                              <div className="company-booking-secondary-text">
+                                Khởi hành: {formatDate(booking.departureDate)}
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         <td>
-                          {booking.quantity ?? '—'}
+                          {booking.guestCount ?? '—'}
                         </td>
 
                         <td>
                           {formatCurrency(
                             booking.totalAmount,
                           )}
+                          <div className="company-booking-secondary-text">
+                            Tổng tiền booking, chưa xác minh thanh toán
+                          </div>
                         </td>
 
                         <td>
@@ -442,6 +569,7 @@ export default function BookingsPage() {
                                   booking.id,
                                 )
                               }
+                              disabled={detailLoading}
                             >
                               <Eye size={16} />
                               Xem
@@ -456,6 +584,7 @@ export default function BookingsPage() {
             </table>
           </div>
         </div>
+        )}
       </section>
 
       {(selectedBooking ||
@@ -491,6 +620,15 @@ export default function BookingsPage() {
                 <button
                   type="button"
                   className="company-secondary-button"
+                  onClick={() => setDetailReloadKey((key) => key + 1)}
+                >
+                  <RotateCcw size={15} />
+                  Thử lại
+                </button>
+
+                <button
+                  type="button"
+                  className="company-secondary-button"
                   onClick={closeDetail}
                 >
                   Đóng
@@ -521,9 +659,23 @@ export default function BookingsPage() {
 
                 <div className="company-booking-detail-grid">
                   <div>
-                    <span>Guest ID</span>
+                    <span>Khách hàng</span>
                     <strong>
-                      #{selectedBooking?.guestId ?? '—'}
+                      {selectedBooking?.contactName || '—'}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>User ID</span>
+                    <strong>
+                      #{selectedBooking?.userId ?? '—'}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Tour</span>
+                    <strong>
+                      {selectedBooking?.tourTitle || '—'}
                     </strong>
                   </div>
 
@@ -535,9 +687,23 @@ export default function BookingsPage() {
                   </div>
 
                   <div>
-                    <span>Số lượng</span>
+                    <span>Departure ID</span>
                     <strong>
-                      {selectedBooking?.quantity ?? '—'}
+                      #{selectedBooking?.tourDepartureId ?? '—'}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Ngày khởi hành</span>
+                    <strong>
+                      {formatDate(selectedBooking?.departureDate)}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Số khách</span>
+                    <strong>
+                      {selectedBooking?.guestCount ?? '—'}
                     </strong>
                   </div>
 
@@ -551,12 +717,24 @@ export default function BookingsPage() {
                   </div>
 
                   <div>
+                    <span>Giá departure</span>
+                    <strong>
+                      {formatCurrency(
+                        selectedBooking?.departurePrice,
+                      )}
+                    </strong>
+                  </div>
+
+                  <div>
                     <span>Tổng tiền</span>
                     <strong>
                       {formatCurrency(
                         selectedBooking?.totalAmount,
                       )}
                     </strong>
+                    <small>
+                      Tổng tiền booking; API không cung cấp trạng thái thanh toán.
+                    </small>
                   </div>
 
                   <div>
@@ -565,6 +743,103 @@ export default function BookingsPage() {
                       {getStatusConfig(
                         selectedBooking?.status,
                       ).label}
+                    </strong>
+                    {selectedBooking?.status === 'PENDING' && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() =>
+                            handleUpdateBookingStatus(
+                              selectedBooking.id,
+                              'CONFIRMED',
+                            )
+                          }
+                          className="company-primary-button"
+                        >
+                          {actionLoading && (
+                            <LoaderCircle
+                              size={15}
+                              className="company-booking-spinner"
+                            />
+                          )}
+                          Xác nhận booking
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() =>
+                            handleUpdateBookingStatus(
+                              selectedBooking.id,
+                              'CANCELLED',
+                            )
+                          }
+                          className="company-secondary-button"
+                        >
+                          Hủy booking
+                        </button>
+                      </>
+                    )}
+
+                    {selectedBooking?.status === 'CONFIRMED' && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() =>
+                            handleUpdateBookingStatus(
+                              selectedBooking.id,
+                              'COMPLETED',
+                            )
+                          }
+                          className="company-primary-button"
+                        >
+                          {actionLoading && (
+                            <LoaderCircle
+                              size={15}
+                              className="company-booking-spinner"
+                            />
+                          )}
+                          Hoàn tất booking
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={actionLoading}
+                          onClick={() =>
+                            handleUpdateBookingStatus(
+                              selectedBooking.id,
+                              'CANCELLED',
+                            )
+                          }
+                          className="company-secondary-button"
+                        >
+                          Hủy booking
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {actionError && (
+                    <div className="company-page-alert error" role="alert">
+                      {actionError}
+                    </div>
+                  )}
+
+                  {actionSuccess && (
+                    <div
+                      className="company-booking-feedback success"
+                      role="status"
+                    >
+                      {actionSuccess}
+                    </div>
+                  )}
+
+                  <div>
+                    <span>Trạng thái departure</span>
+                    <strong>
+                      {selectedBooking?.departureStatus || '—'}
                     </strong>
                   </div>
 
@@ -577,6 +852,27 @@ export default function BookingsPage() {
                     </strong>
                   </div>
                 </div>
+
+                {selectedBooking?.contactEmail && (
+                  <div className="company-booking-contact">
+                    <span>Email</span>
+                    <strong>{selectedBooking.contactEmail}</strong>
+                  </div>
+                )}
+
+                {selectedBooking?.contactPhone && (
+                  <div className="company-booking-contact">
+                    <span>Số điện thoại</span>
+                    <strong>{selectedBooking.contactPhone}</strong>
+                  </div>
+                )}
+
+                {selectedBooking?.specialRequest && (
+                  <div className="company-booking-contact">
+                    <span>Yêu cầu đặc biệt</span>
+                    <strong>{selectedBooking.specialRequest}</strong>
+                  </div>
+                )}
               </>
             )}
           </div>

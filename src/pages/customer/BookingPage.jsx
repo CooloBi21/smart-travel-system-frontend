@@ -143,12 +143,17 @@ export default function BookingPage() {
       return;
     }
 
+    const availableSlots =
+      departure?.availableSlots ??
+      departure?.capacity;
+
     if (
-      departure.capacity &&
-      normalizedGuestCount > Number(departure.capacity)
+      availableSlots !== undefined &&
+      availableSlots !== null &&
+      normalizedGuestCount > Number(availableSlots)
     ) {
       setError(
-        `Số lượng khách không được vượt quá ${departure.capacity} người.`,
+        `Số lượng khách không được vượt quá ${availableSlots} người còn trống.`,
       );
       return;
     }
@@ -168,7 +173,13 @@ export default function BookingPage() {
 
       const bookingData = booking?.booking || booking;
 
-      navigate(`/payment/${bookingData.id}`);
+      navigate(`/payment/${bookingData.id}`, {
+        state: {
+          tourTitle: tour.title,
+          companyName: tour.companyName,
+          departureDate: departure.departureDate,
+        },
+      });
     } catch (requestError) {
       setError(
         requestError.response?.data?.message ||
@@ -298,7 +309,7 @@ export default function BookingPage() {
               <input
                 type="number"
                 min="1"
-                max={departure?.capacity || undefined}
+                max={ departure?.availableSlots ?? departure?.capacity ?? undefined }
                 value={guestCount}
                 onChange={(event) =>
                   setGuestCount(
